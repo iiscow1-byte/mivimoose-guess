@@ -294,3 +294,40 @@ npm start            # serves the API, the sockets, and the built client
 The server serves `client/dist` from the same origin when it exists, which keeps
 the Discord URL mapping to a single entry. The vector index needs roughly 350MB
 of resident memory, so size the instance accordingly.
+
+### Railway
+
+The repo ships a [`railway.toml`](railway.toml) that wires up the build and
+start commands, so connecting the repo is most of the work. The rest is four
+things to set up once.
+
+1. **New project → Deploy from GitHub repo**, pick this repo.
+2. **Attach a Volume** (Settings → Volumes), mount path `/data`. This is where
+   the SQLite database and the built vector index live, so they survive a
+   redeploy instead of resetting every time.
+3. **Generate a domain** (Settings → Networking → Generate Domain) so
+   `RAILWAY_PUBLIC_DOMAIN` exists for the variable reference below.
+4. **Set variables** (Variables tab):
+
+   | Key | Value |
+   | --- | --- |
+   | `SESSION_SECRET` | a random 32+ character string |
+   | `DATABASE_URL` | `file:${{RAILWAY_VOLUME_MOUNT_PATH}}/db/arena.db` |
+   | `CORS_ORIGINS` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` |
+   | `NODE_ENV` | `production` |
+   | `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | real values if wiring up the Activity, otherwise any placeholder — guest play doesn't need them |
+   | `EMBEDDING_PROVIDER` | `vectors` (200k-word index) or `topic` (bundled 1,808-word model, no download) |
+
+   `${{...}}` is Railway's variable-reference syntax — paste it literally and
+   Railway fills in the real value.
+
+Deploy. The start command (`server/scripts/railway-start.mjs`) restores
+`data/index.bin` from the volume if it's there, otherwise downloads GloVe and
+builds it fresh (a few minutes, first boot only — every later deploy reads the
+cached copy off the volume), then runs `prisma db push` and starts the server.
+`PORT` is set by Railway automatically; the server already listens on
+`process.env.PORT`.
+
+Set `EMBEDDING_PROVIDER=topic` instead if you'd rather skip the download
+entirely and don't need the full 200,000-word vocabulary — it also means the
+volume only needs to hold the database.

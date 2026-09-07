@@ -34,6 +34,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
+import { createRequire } from 'node:module';
 
 const DATA = path.resolve(process.cwd(), 'data');
 const FORCE = process.argv.includes('--force');
@@ -113,11 +114,15 @@ async function main() {
     await gunzip(path.join(DATA, 'glove-200d.gz'), raw);
 
     console.log('\nBuilding the vector index (this takes a minute)\n');
+    // Resolve through the package's `exports` map (via `createRequire`) rather
+    // than a hardcoded node_modules path — npm workspaces hoist tsx to the
+    // repo root, so it doesn't live under server/node_modules.
+    const tsxCli = createRequire(import.meta.url).resolve('tsx/cli');
     const built = spawnSync(
       process.execPath,
       [
         '--max-old-space-size=6144',
-        path.resolve(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+        tsxCli,
         path.resolve(process.cwd(), 'scripts', 'build-index.ts'),
         '--input',
         raw,
