@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
+import { corsDelegate } from './cors.js';
 import { env } from './env.js';
 import { log } from './log.js';
 import { createApiRouter } from './routes.js';
@@ -18,21 +19,7 @@ async function main() {
   const app = express();
   app.set('trust proxy', 1);
 
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Same-origin and server-to-server requests have no Origin header.
-        if (!origin) return callback(null, true);
-        const allowed =
-          env.corsOrigins.includes(origin) ||
-          origin === env.activityOrigin ||
-          /^https:\/\/[\w-]+\.discordsays\.com$/.test(origin) ||
-          (!env.isProd && /^http:\/\/localhost:\d+$/.test(origin));
-        callback(allowed ? null : new Error(`Origin ${origin} is not allowed`), allowed);
-      },
-      credentials: true,
-    }),
-  );
+  app.use(cors(corsDelegate));
   app.use(express.json({ limit: '256kb' }));
 
   app.use('/api', createApiRouter());

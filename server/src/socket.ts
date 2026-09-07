@@ -13,6 +13,7 @@ import {
 } from '@mivimoose/shared';
 import { verifySession } from './auth.js';
 import { displayRating, ensureGuildMembership, prisma, toPublicUser } from './db.js';
+import { corsDelegate } from './cors.js';
 import { env } from './env.js';
 import { log } from './log.js';
 import { GuessRejected, type Room } from './game/Room.js';
@@ -51,10 +52,7 @@ function ok<T>(data: T): Ack<T> {
 
 export function createSocketServer(httpServer: HttpServer) {
   const io = new Server(httpServer, {
-    cors: {
-      origin: [...env.corsOrigins, env.activityOrigin],
-      credentials: true,
-    },
+    cors: corsDelegate,
     // Discord's Activity iframe proxies websockets; polling is the fallback.
     transports: ['websocket', 'polling'],
     pingTimeout: 25_000,
