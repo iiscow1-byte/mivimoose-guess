@@ -77,15 +77,6 @@ export function GuessRow({
           </span>
         )}
 
-        {guess.stolenFrom && (
-          <span
-            className="truncate"
-            style={{ fontSize: 12.5, color: 'var(--pink)', flex: '0 1 auto', minWidth: 0 }}
-            title={`${guess.stolenFrom.displayName} played this first`}
-          >
-            guessed by {guess.stolenFrom.displayName}
-          </span>
-        )}
 
         <span className="guess__rank">{found ? 1 : formatRank(guess.rank)}</span>
       </div>

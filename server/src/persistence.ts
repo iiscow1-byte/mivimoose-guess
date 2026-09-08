@@ -79,7 +79,6 @@ export async function recordMatch(room: Room, result: MatchResult): Promise<Matc
           round: g.round,
           word: g.word,
           rank: g.rank,
-          stolen: g.stolen,
           isHint: g.isHint,
           msIntoRound: g.msIntoRound,
         })),
@@ -139,7 +138,6 @@ export async function recordMatch(room: Room, result: MatchResult): Promise<Matc
           wins: won ? { increment: 1 } : undefined,
           wordsFound: { increment: entry.wordsFound },
           totalGuesses: { increment: entry.totalGuesses },
-          stolenWords: { increment: player?.stolenWords ?? 0 },
           currentStreak: nextStreak,
           bestStreak: Math.max(existing?.bestStreak ?? 0, nextStreak),
           fastestFindMs:

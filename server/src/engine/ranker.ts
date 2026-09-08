@@ -1,6 +1,7 @@
 import { env } from '../env.js';
 import { log } from '../log.js';
 import { getVectorSpace, type VectorSpace } from './vectors.js';
+import { isAllowedWord } from './wordFilter.js';
 
 /**
  * A full ranking of the lexicon against one secret word.
@@ -187,8 +188,12 @@ export function wordAtRank(table: RankTable, rank: number): string | null {
 export function neighboursOf(table: RankTable, count = 12): { word: string; rank: number }[] {
   const space = getVectorSpace();
   const out: { word: string; rank: number }[] = [];
-  for (let r = 2; r <= Math.min(count + 1, table.depth); r++) {
-    out.push({ word: space.wordAt(table.indexByRank[r]), rank: r });
+  for (let r = 2; r <= table.depth && out.length < count; r++) {
+    const word = space.wordAt(table.indexByRank[r]);
+    // A reveal is the one place the game prints words nobody chose, so it is
+    // also the easiest place for an obscenity to surface next to the answer.
+    if (!isAllowedWord(word)) continue;
+    out.push({ word, rank: r });
   }
   return out;
 }
@@ -211,7 +216,7 @@ export function pickHint(
     for (const rank of [target + spread, target - spread]) {
       if (rank < 2 || rank > table.depth) continue;
       const word = space.wordAt(table.indexByRank[rank]);
-      if (!exclude.has(word)) return { word, rank };
+      if (!exclude.has(word) && isAllowedWord(word)) return { word, rank };
     }
   }
   return null;

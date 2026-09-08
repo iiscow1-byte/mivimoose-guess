@@ -24,7 +24,7 @@ const VISIBILITY_HINT: Record<Visibility, string> = {
   hidden: 'nothing about opponents',
   count: 'their guess count only',
   best: 'their closest rank',
-  full: 'every word they play',
+  full: 'their rank on every guess',
 };
 
 /** A titled run of fields. No border — the editor already sits inside a panel. */
@@ -297,13 +297,6 @@ export function SettingsEditor({
           className="grid"
           style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(196px, 1fr))', gap: 'var(--s2)' }}
         >
-          <Toggle
-            label="Show who got there first"
-            hint="repeats are tagged"
-            checked={settings.showStolenWords}
-            disabled={locked('showStolenWords')}
-            onChange={(showStolenWords) => onChange({ showStolenWords })}
-          />
           <Toggle
             label="End round on first find"
             hint="off: everyone plays the clock"

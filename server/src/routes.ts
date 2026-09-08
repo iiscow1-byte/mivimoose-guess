@@ -434,7 +434,6 @@ export function createApiRouter() {
       progress: rankProgress(rank, table.depth),
       at: Date.now(),
       playerId: userId,
-      stolenFrom: null,
       repeat: false,
       isHint: false,
     };

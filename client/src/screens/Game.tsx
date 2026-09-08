@@ -73,14 +73,6 @@ export function Game({ room }: { room: RoomState }) {
   const guessesLeft =
     room.settings.guessLimit > 0 ? room.settings.guessLimit - (me?.guessCount ?? 0) : null;
 
-  // Warn before you spend a guess on a word somebody already burned.
-  const claimedBy = useMemo(() => {
-    const key = word.trim().toLowerCase();
-    if (!key) return null;
-    const claim = room.claimed[key];
-    if (!claim || claim.playerId === user?.id) return null;
-    return claim;
-  }, [word, room.claimed, user?.id]);
 
   const lastEntry = room.feed[room.feed.length - 1];
 
@@ -243,10 +235,6 @@ export function Game({ room }: { room: RoomState }) {
               >
                 {guessError}
               </motion.span>
-            ) : claimedBy ? (
-              <span className="chip chip--warn">
-                guessed by {claimedBy.displayName} · {formatRank(claimedBy.rank)}
-              </span>
             ) : null}
           </span>
 

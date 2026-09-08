@@ -14,7 +14,6 @@ export const DEFAULT_SETTINGS: GameSettings = {
   hints: 1,
   visibility: 'best',
   endOnFirstFind: false,
-  showStolenWords: true,
   ranked: false,
   allowSpectators: true,
   private: false,
@@ -46,7 +45,7 @@ export const MODES: Record<GameMode, ModeDescriptor> = {
     name: 'Duel',
     tagline: 'Head to head, rated, best of three',
     description:
-      'One on one. Every word your opponent burns is a word you cannot claim clean — steal it and the board shows who got there first. Moves your Elo.',
+      'One on one, and the boards stay private. A word your opponent has already burned is simply closed to you — you learn that it is taken and nothing else. Moves your Elo.',
     minPlayers: 2,
     maxPlayers: 2,
     icon: 'swords',
@@ -105,7 +104,7 @@ export const MODES: Record<GameMode, ModeDescriptor> = {
     name: 'Co-op',
     tagline: 'One team, one shared guess budget',
     description:
-      'Everybody plays the same board. Guesses come out of a shared pool and every word is visible to the whole team, so duplicates hurt all of you.',
+      'Everybody hunts the same word out of one shared pool of guesses. Boards stay private even here, so a word a teammate has already spent comes back closed — it costs the team nothing, but nobody gets to ride along on the reads somebody else paid for.',
     minPlayers: 2,
     maxPlayers: 10,
     icon: 'users',

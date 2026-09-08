@@ -77,8 +77,6 @@ export interface GameSettings {
   visibility: Visibility;
   /** End the round the instant somebody finds the word. */
   endOnFirstFind: boolean;
-  /** Duplicate guesses are flagged with the name of whoever got there first. */
-  showStolenWords: boolean;
   /** Ranked matches move Elo. Only meaningful for duel/classic. */
   ranked: boolean;
   allowSpectators: boolean;
@@ -133,8 +131,6 @@ export interface GuessResult {
   progress: number;
   at: number;
   playerId: string;
-  /** Set when another player already played this word this round. */
-  stolenFrom: { playerId: string; displayName: string; rank: number } | null;
   /** True when the guess is a repeat by the same player. */
   repeat: boolean;
   isHint: boolean;
@@ -142,6 +138,8 @@ export interface GuessResult {
 
 export type GuessErrorCode =
   | 'unknown-word'
+  | 'blocked-word'
+  | 'too-common'
   | 'too-short'
   | 'already-guessed'
   | 'guess-limit'
@@ -268,8 +266,6 @@ export interface RoomState {
   lastRound: RoundSummary | null;
   /** Public event log, newest last. */
   feed: FeedEntry[];
-  /** Words claimed this round mapped to whoever claimed them first. */
-  claimed: Record<string, { playerId: string; displayName: string; rank: number }>;
   /**
    * Quick-match lobbies run themselves: settings are fixed, and the match
    * starts on a timer once enough people are in rather than waiting on a host.

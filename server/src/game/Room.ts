@@ -27,6 +27,7 @@ import {
   resolveWord,
   type RankTable,
 } from '../engine/ranker.js';
+import { isBlocked, isTooCommon } from '../engine/wordFilter.js';
 
 const COUNTDOWN_MS = 3500;
 /** Quick match waits this long once a lobby is viable, so people can trickle in. */
@@ -61,7 +62,6 @@ export interface PlayerState {
   eliminated: boolean;
   wordsFound: number;
   totalGuesses: number;
-  stolenWords: number;
   placements: number[];
   ratingBefore: number | null;
 
@@ -109,7 +109,12 @@ export class Room {
   activePlayerId: string | null = null;
   teamGuessesLeft: number | null = null;
 
-  claimed = new Map<string, { playerId: string; displayName: string; rank: number }>();
+  /**
+   * Every word played this round, mapped to whoever played it first. Nothing
+   * about it reaches the client: it exists only to close a word to everybody
+   * else, and the rejection it produces carries no rank and no name.
+   */
+  claimed = new Map<string, string>();
   feed: FeedEntry[] = [];
   rounds: RoundSummary[] = [];
   result: MatchResult | null = null;
@@ -120,7 +125,6 @@ export class Room {
     round: number;
     word: string;
     rank: number;
-    stolen: boolean;
     isHint: boolean;
     msIntoRound: number;
   }[] = [];
@@ -250,7 +254,6 @@ export class Room {
       eliminated: false,
       wordsFound: 0,
       totalGuesses: 0,
-      stolenWords: 0,
       placements: [],
       ratingBefore: null,
       guesses: [],
@@ -414,7 +417,6 @@ export class Room {
       player.eliminated = false;
       player.wordsFound = 0;
       player.totalGuesses = 0;
-      player.stolenWords = 0;
       player.placements = [];
       player.streak = 0;
       player.ready = false;
@@ -563,11 +565,31 @@ export class Room {
       throw new GuessRejected('unknown-word', `"${trimmed.toLowerCase()}" is not in the word list`);
     }
 
+    // Checked on the resolved form as well as what was typed, so `bitches`
+    // cannot walk in through the plural rule. Neither costs a guess: the word
+    // never reaches the board, so there is nothing to charge for.
+    if (isBlocked(trimmed) || isBlocked(resolved.word)) {
+      throw new GuessRejected('blocked-word', 'That word is not allowed');
+    }
+    if (isTooCommon(resolved.word, true)) {
+      throw new GuessRejected('too-common', `"${resolved.word}" is too common to score`);
+    }
+
     // Replaying a word you already tried is not an error, it is a memory lapse.
     // Hand the original row straight back so the board re-pins it and says
-    // "already guessed" — no guess spent, no budget spent, no scolding.
+    // "already guessed" — no guess spent, no budget spent, no scolding. Your
+    // own rank is yours already, so showing it again reveals nothing.
     const previous = player.guesses.find((g) => g.word === resolved.word);
     if (previous) return { ...previous, repeat: true };
+
+    // Somebody else got there first. They are told that and nothing else —
+    // no rank, no name, not even whether the word was warm. Leaking either
+    // would hand over a free read on an opponent's board, which is exactly
+    // what keeping the boards private is for. It costs no guess, because a
+    // word you are not allowed to play is not a turn you took.
+    if (this.claimed.has(resolved.word)) {
+      throw new GuessRejected('already-guessed', 'Already guessed');
+    }
 
     const rank = rankOf(this.table, resolved.index);
     if (rank === null) {
@@ -602,9 +624,6 @@ export class Room {
   private applyGuess(player: PlayerState, word: string, rank: number, isHint: boolean): GuessResult {
     const now = Date.now();
     const elapsed = now - this.roundStartedAt;
-    const claim = this.claimed.get(word);
-    const stolenFrom =
-      claim && claim.playerId !== player.user.id && this.settings.showStolenWords ? claim : null;
 
     const result: GuessResult = {
       id: nanoid(10),
@@ -614,7 +633,6 @@ export class Room {
       progress: rankProgress(rank, this.table?.depth ?? 60000),
       at: elapsed,
       playerId: player.user.id,
-      stolenFrom,
       repeat: false,
       isHint,
     };
@@ -622,12 +640,9 @@ export class Room {
     player.guesses.push(result);
     player.guessedWords.add(word);
     player.totalGuesses += 1;
-    if (stolenFrom) player.stolenWords += 1;
     if (this.teamGuessesLeft !== null) this.teamGuessesLeft -= 1;
 
-    if (!claim) {
-      this.claimed.set(word, { playerId: player.user.id, displayName: player.user.displayName, rank });
-    }
+    this.claimed.set(word, player.user.id);
 
     const improved = player.bestRank === null || rank < player.bestRank;
     if (improved) player.bestRank = rank;
@@ -685,7 +700,9 @@ export class Room {
         kind: 'guess',
         playerId: player.user.id,
         displayName: name,
-        text: `${name} guessed ${result.word}`,
+        // How close they got, never what they played. `full` is now the
+        // loudest the room gets about a rank, and silent about the word.
+        text: `${name} guessed at rank ${result.rank}`,
         rank: result.rank,
         band: result.band,
       });
@@ -816,7 +833,6 @@ export class Room {
           round: this.round,
           word: guess.word,
           rank: guess.rank,
-          stolen: guess.stolenFrom !== null,
           isHint: guess.isHint,
           msIntoRound: guess.at,
         });
@@ -1005,7 +1021,6 @@ export class Room {
   private serializePlayer(player: PlayerState, viewerId: string | null): RoomPlayer {
     const revealAll = this.phase === 'roundEnd' || this.phase === 'matchEnd';
     const isSelf = player.user.id === viewerId;
-    const shareBoard = this.settings.mode === 'coop' || this.settings.visibility === 'full';
 
     let status: RoomPlayer['status'] = 'lobby';
     if (!player.connected) status = 'disconnected';
@@ -1022,7 +1037,7 @@ export class Room {
       score: player.score,
       // Hiding the opponent's rank is the whole point of the "hidden" setting.
       bestRank:
-        isSelf || revealAll || this.settings.visibility === 'best' || shareBoard
+        isSelf || revealAll || this.settings.visibility === 'best' || this.settings.visibility === 'full'
           ? player.bestRank
           : null,
       guessCount:
@@ -1033,7 +1048,10 @@ export class Room {
       streak: player.streak,
       placements: player.placements,
       frozenUntil: isSelf ? player.frozenUntil : null,
-      guesses: isSelf || revealAll || shareBoard ? player.guesses : undefined,
+      // Words are private until the round is over. `visibility` still says how
+      // much of a rank the room shares; it no longer says anything about which
+      // words were spent getting there.
+      guesses: isSelf || revealAll ? player.guesses : undefined,
     };
   }
 
@@ -1053,8 +1071,6 @@ export class Room {
       activePlayerId: this.activePlayerId,
       lastRound: this.phase === 'roundEnd' || this.phase === 'matchEnd' ? (this.rounds[this.rounds.length - 1] ?? null) : null,
       feed: this.feed,
-      claimed:
-        this.settings.showStolenWords && this.phase !== 'lobby' ? Object.fromEntries(this.claimed) : {},
       autoStart: this.managed,
       teamGuessesLeft: this.teamGuessesLeft,
       result: this.result,

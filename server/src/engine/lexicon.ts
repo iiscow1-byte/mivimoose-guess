@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DIFFICULTY_BANDS, type Category, type Difficulty } from '@mivimoose/shared';
 import { TOPICS } from '../data/topics.js';
+import { STOPWORDS } from '../data/stopwords.js';
 import { log } from '../log.js';
 import { getVectorSpace, type VectorSpace } from './vectors.js';
+import { isBlocked } from './wordFilter.js';
 
 /**
  * Which words are allowed to be the answer.
@@ -12,7 +14,7 @@ import { getVectorSpace, type VectorSpace } from './vectors.js';
  * index. Answers come from a much tighter pool, because "the word of the day is
  * `pcmcia`" is not a game, and neither is `hospitals`.
  *
- * The pool is GloVe's frequency-ordered vocabulary passed through four filters:
+ * The pool is GloVe's frequency-ordered vocabulary passed through five filters:
  *
  *   1. A Hunspell dictionary (data/en.dic), restricted to its lowercase stems.
  *      This is the load-bearing filter. GloVe 6B is lowercased, so `rome` and
@@ -24,7 +26,12 @@ import { getVectorSpace, type VectorSpace } from './vectors.js';
  *   3. Base-form preference. `hospitals`, `reporting` and `immensely` are all
  *      rejected because a shorter dictionary form of each is already in the
  *      pool. Answers should be lemmas; the inflections stay guessable.
- *   4. A frequency window, so answers are words people have actually met.
+ *   4. A frequency window, so answers are words people have actually met, with
+ *      the two stopword tiers in data/stopwords.ts closing the gap the window
+ *      is too shallow to reach — `time`, `people` and `thing` are common
+ *      enough to sit deep in the vocabulary and still make thin answers.
+ *   5. The blocklist in data/blocklist.ts: obscenity and slurs, which the
+ *      Hunspell gate spells perfectly happily and would otherwise let through.
  *
  * With no vector index the bundled topic model supplies the vocabulary instead
  * and the same banding logic applies unchanged.
@@ -36,26 +43,13 @@ import { getVectorSpace, type VectorSpace } from './vectors.js';
  * inside the range of words that actually show up in ordinary text.
  */
 const SECRET_FREQUENCY_CEILING = 60_000;
-/** Skip the very top: articles, prepositions, bare function words. */
-const SECRET_FREQUENCY_FLOOR = 60;
-
-const STOPWORDS = new Set([
-  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our',
-  'out', 'his', 'has', 'had', 'him', 'she', 'they', 'this', 'that', 'with', 'from', 'have',
-  'were', 'been', 'their', 'there', 'what', 'when', 'which', 'them', 'then', 'than', 'into',
-  'some', 'more', 'very', 'just', 'also', 'about', 'would', 'could', 'should', 'these', 'those',
-  'its', 'it', 'an', 'of', 'to', 'in', 'on', 'at', 'by', 'as', 'is', 'be', 'or', 'if',
-  'do', 'does', 'did', 'so', 'we', 'he', 'me', 'my', 'no', 'up', 'us', 'am', 'who', 'whom',
-  'whose', 'will', 'shall', 'may', 'might', 'must', 'being', 'such', 'each', 'other',
-  'any', 'both', 'few', 'most', 'own', 'same', 'too', 'only', 'here', 'why', 'how', 'because',
-  'while', 'after', 'before', 'above', 'below', 'over', 'under', 'again', 'once', 'during',
-  'through', 'between', 'against', 'among', 'per', 'via', 'upon', 'onto', 'off', 'yet',
-  'ever', 'never', 'always', 'often', 'still', 'even', 'much', 'many', 'like', 'well',
-  'where', 'come', 'came', 'went', 'said', 'says', 'get', 'got', 'make', 'made', 'take',
-  'took', 'know', 'knew', 'think', 'thought', 'want', 'used', 'using', 'able', 'another',
-  'instead', 'actually', 'though', 'although', 'however', 'therefore', 'thus', 'hence',
-  'something', 'anything', 'everything', 'nothing', 'someone', 'anyone', 'everyone',
-]);
+/**
+ * Skip the very top of the vocabulary outright. GloVe's first few hundred
+ * tokens are articles, prepositions, bare auxiliaries and punctuation — none of
+ * them answers, and being the most frequent words in English they would
+ * otherwise anchor the easy band.
+ */
+const SECRET_FREQUENCY_FLOOR = 250;
 
 /** Roman numerals, vowel runs, and triple-letter mashes make poor answers. */
 const BAD_SECRET = /^(?:[ivxlcdm]+|[aeiou]{3,}|(.)\1{2,})$/;
@@ -184,6 +178,9 @@ function buildLexicon(): Lexicon {
 
   const candidates: string[] = [];
   space.words.forEach((word, frequencyRank) => {
+    // Ahead of the extras branch on purpose: data/secrets.txt is an operator
+    // convenience, not a way around the blocklist.
+    if (isBlocked(word)) return;
     if (extras.has(word)) {
       candidates.push(word);
       return;
