@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Wordmark } from './components/Logo';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { Avatar, Toasts } from './components/ui';
@@ -143,27 +143,43 @@ export default function App() {
       </header>
 
       <div className="app__body">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={screenKey}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          >
-            {tab === 'play' && !room && <Home />}
-            {tab === 'play' && room?.phase === 'lobby' && <Lobby room={room} />}
-            {tab === 'play' &&
-              room &&
-              (room.phase === 'countdown' || room.phase === 'playing' || room.phase === 'roundEnd') && (
-                <Game room={room} />
-              )}
-            {tab === 'play' && room?.phase === 'matchEnd' && <Results room={room} />}
-            {tab === 'daily' && <Daily />}
-            {tab === 'ranks' && <Leaderboard />}
-            {tab === 'profile' && <Profile />}
-          </motion.div>
-        </AnimatePresence>
+        {/*
+          No AnimatePresence around the screen swap, and no exit animation.
+          It used to be `mode="wait"`, which holds the incoming screen back
+          until the outgoing one reports its exit finished — and the outgoing
+          Game screen does not always report it. Its guess rows animate with
+          `layout`, and a layout animation still in flight when the screen is
+          removed can swallow the exit-complete callback. The old screen was
+          then left sitting at opacity 0 with the new one never mounted: a
+          blank page, permanently, with the socket still happily connected.
+
+          It showed up as "the match ended and I got a blank page" and as a
+          game that sometimes never loaded when starting or rejoining, because
+          it depended on whether anything happened to be animating at the
+          moment the screen changed.
+
+          A keyed motion.div still remounts and plays `initial` -> `animate` on
+          every change, so the fade-in survives; only the fade-out is gone, and
+          with it any way for an animation to strand a player.
+        */}
+        <motion.div
+          key={screenKey}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {tab === 'play' && !room && <Home />}
+          {tab === 'play' && room?.phase === 'lobby' && <Lobby room={room} />}
+          {tab === 'play' &&
+            room &&
+            (room.phase === 'countdown' || room.phase === 'playing' || room.phase === 'roundEnd') && (
+              <Game room={room} />
+            )}
+          {tab === 'play' && room?.phase === 'matchEnd' && <Results room={room} />}
+          {tab === 'daily' && <Daily />}
+          {tab === 'ranks' && <Leaderboard />}
+          {tab === 'profile' && <Profile />}
+        </motion.div>
       </div>
 
       <Toasts />
