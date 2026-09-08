@@ -1021,6 +1021,11 @@ export class Room {
   private serializePlayer(player: PlayerState, viewerId: string | null): RoomPlayer {
     const revealAll = this.phase === 'roundEnd' || this.phase === 'matchEnd';
     const isSelf = player.user.id === viewerId;
+    // A player who has already found this round's word is done: there is no
+    // guess left for them to copy into, so the other boards open up and they
+    // can watch the rest of the round out. The one live exception to keeping
+    // words private, and it costs nothing because their round is over.
+    const watching = viewerId !== null && (this.players.get(viewerId)?.foundAt ?? null) !== null;
 
     let status: RoomPlayer['status'] = 'lobby';
     if (!player.connected) status = 'disconnected';
@@ -1037,21 +1042,24 @@ export class Room {
       score: player.score,
       // Hiding the opponent's rank is the whole point of the "hidden" setting.
       bestRank:
-        isSelf || revealAll || this.settings.visibility === 'best' || this.settings.visibility === 'full'
+        isSelf || revealAll || watching || this.settings.visibility === 'best' || this.settings.visibility === 'full'
           ? player.bestRank
           : null,
       guessCount:
-        isSelf || revealAll || this.settings.visibility !== 'hidden' ? player.guesses.length : 0,
+        isSelf || revealAll || watching || this.settings.visibility !== 'hidden'
+          ? player.guesses.length
+          : 0,
       foundAt: player.foundAt,
       strikes: player.strikes,
       hintsLeft: player.hintsLeft,
       streak: player.streak,
       placements: player.placements,
       frozenUntil: isSelf ? player.frozenUntil : null,
-      // Words are private until the round is over. `visibility` still says how
-      // much of a rank the room shares; it no longer says anything about which
-      // words were spent getting there.
-      guesses: isSelf || revealAll ? player.guesses : undefined,
+      // Words are private until the round is over, or until the viewer has
+      // found it themselves. `visibility` still says how much of a rank the
+      // room shares; it no longer says anything about which words were spent
+      // getting there.
+      guesses: isSelf || revealAll || watching ? player.guesses : undefined,
     };
   }
 

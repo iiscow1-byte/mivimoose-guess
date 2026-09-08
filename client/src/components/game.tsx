@@ -23,13 +23,10 @@ import { Avatar } from './ui';
 export function GuessRow({
   guess,
   pinned,
-  ownerName,
 }: {
   guess: GuessResult;
   /** Rendered as the pinned copy above the list rather than inside it. */
   pinned?: boolean;
-  /** Set on shared boards, where rows come from several players. */
-  ownerName?: string;
 }) {
   const color = bandColor(guess.band);
   const found = guess.rank === 1;
@@ -52,13 +49,6 @@ export function GuessRow({
         style={{ background: color }}
       />
       <div className="guess__content">
-        {ownerName && (
-          <span className="faint" style={{ fontSize: 12, flex: 'none', maxWidth: 74 }}>
-            <span className="truncate" style={{ display: 'block' }}>
-              {ownerName}
-            </span>
-          </span>
-        )}
 
         <span className="guess__word truncate">{guess.word}</span>
 
@@ -102,8 +92,6 @@ export function GuessList({
   latestId,
   latestGuess,
   pulse = 0,
-  showOwners,
-  nameFor,
   emptyHint,
 }: {
   guesses: GuessResult[];
@@ -113,8 +101,6 @@ export function GuessList({
   latestGuess?: GuessResult | null;
   /** Changes on every submission so a repeated word still re-flashes. */
   pulse?: number;
-  showOwners?: boolean;
-  nameFor?: (playerId: string) => string;
   emptyHint?: string;
 }) {
   const latest = useMemo(() => {
@@ -142,7 +128,6 @@ export function GuessList({
               key={`pinned-${latest.id}-${pulse}`}
               guess={latest}
               pinned
-              ownerName={showOwners ? nameFor?.(latest.playerId) : undefined}
             />
           </ul>
           {/* The pinned row also appears in the sorted list below. Without a
@@ -164,7 +149,6 @@ export function GuessList({
             <GuessRow
               key={guess.id}
               guess={guess}
-              ownerName={showOwners ? nameFor?.(guess.playerId) : undefined}
             />
           ))}
         </AnimatePresence>

@@ -37,25 +37,28 @@ export function Game({ room }: { room: RoomState }) {
   const [chat, setChat] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [watching, setWatching] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const me = room.players.find((p) => p.user.id === user?.id);
   const isSpectator = !me;
   const remaining = useCountdown(room.deadline, clockOffset);
-  const shared = room.mode === 'coop' || room.settings.visibility === 'full';
 
   const nameFor = useMemo(() => {
     const names = new Map(room.players.map((p) => [p.user.id, p.user.displayName]));
     return (id: string) => names.get(id) ?? 'Someone';
   }, [room.players]);
 
-  // In shared-board modes every player's guesses come down in the state, so the
-  // board shows the whole team's work with attribution.
-  const guesses: GuessResult[] = useMemo(() => {
-    if (!shared) return me?.guesses ?? [];
-    const all = room.players.flatMap((p) => p.guesses ?? []);
-    return all.sort((a, b) => a.at - b.at);
-  }, [shared, room.players, me]);
+  // Once you have found the word your round is over and the server starts
+  // sending the other boards down. Watching is one player at a time rather than
+  // a merged feed: whose guesses you are reading has to stay obvious.
+  const canWatch = me?.status === 'found';
+  const others = useMemo(
+    () => room.players.filter((p) => p.user.id !== user?.id && p.guesses !== undefined),
+    [room.players, user?.id],
+  );
+  const watched = canWatch ? (others.find((p) => p.user.id === watching) ?? null) : null;
+  const guesses: GuessResult[] = watched?.guesses ?? me?.guesses ?? [];
 
   const standings = useMemo(
     () =>
@@ -80,6 +83,11 @@ export function Game({ room }: { room: RoomState }) {
     if (room.phase === 'playing' && myTurn && !frozen) inputRef.current?.focus();
   }, [room.phase, room.round, myTurn, frozen]);
 
+  // A new round puts you back in the hunt, so drop back to your own board.
+  useEffect(() => {
+    setWatching(null);
+  }, [room.round]);
+
   const canGuess =
     room.phase === 'playing' &&
     !isSpectator &&
@@ -96,6 +104,9 @@ export function Game({ room }: { room: RoomState }) {
     const result = await guess(value);
     setSubmitting(false);
     if (result) setWord('');
+    // Enter always leaves you ready to type the next word: accepted, the box is
+    // empty and focused; rejected, the word is still there to edit.
+    inputRef.current?.focus();
   }
 
   return (
@@ -187,7 +198,7 @@ export function Game({ room }: { room: RoomState }) {
               isSpectator
                 ? 'you are spectating'
                 : me?.status === 'found'
-                  ? 'you found it — sit tight'
+                  ? 'you found it — watch the others'
                   : me?.status === 'eliminated'
                     ? 'you are out this round'
                     : !myTurn
@@ -197,7 +208,11 @@ export function Game({ room }: { room: RoomState }) {
                         : 'type a word'
             }
             value={word}
-            disabled={!canGuess || submitting}
+            // readOnly rather than disabled while a guess is in flight. The
+            // browser blurs a disabled input and never hands the focus back,
+            // which is what dropped the caret on every Enter.
+            disabled={!canGuess}
+            readOnly={submitting}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -269,23 +284,55 @@ export function Game({ room }: { room: RoomState }) {
 
       {/* ------------------------------------------------------- board */}
       <div className="col" style={{ gap: 'var(--s2)', minWidth: 0 }}>
+        {/* Board switcher. It only appears once you are out of the hunt, which
+            is the only time the other boards are on the client at all. */}
+        {canWatch && others.length > 0 && (
+          <div className="row row--wrap" style={{ gap: 'var(--s1)' }}>
+            <button
+              type="button"
+              className={cx('chip', watching === null && 'chip--brand')}
+              onClick={() => setWatching(null)}
+            >
+              your board
+            </button>
+            {others.map((player) => (
+              <button
+                key={player.user.id}
+                type="button"
+                className={cx('chip', watching === player.user.id && 'chip--brand')}
+                onClick={() => setWatching(player.user.id)}
+                title={`Watch ${player.user.displayName}`}
+              >
+                {player.user.displayName}
+                {player.bestRank !== null && (
+                  <span className="mono faint" style={{ marginLeft: 6 }}>
+                    {formatRank(player.bestRank)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="row row--between faint" style={{ fontSize: 12 }}>
-          <span>{shared ? 'team board' : 'your board'}</span>
+          <span>{watched ? `watching ${watched.user.displayName}` : 'your board'}</span>
           <span className="mono">
             {guesses.length} {guesses.length === 1 ? 'guess' : 'guesses'}
           </span>
         </div>
         <GuessList
           guesses={guesses}
-          latestId={latestGuessId}
-          latestGuess={latestGuess}
-          pulse={guessSeq}
-          showOwners={shared}
-          nameFor={nameFor}
+          // The pulse and the last-submitted row belong to your own board; on
+          // somebody else's they would flash their guess as though it were yours.
+          latestId={watched ? null : latestGuessId}
+          latestGuess={watched ? null : latestGuess}
+          pulse={watched ? 0 : guessSeq}
           emptyHint={
-            isSpectator
-              ? 'watching along — the board fills as they guess'
-              : 'start broad. music, ocean, money. then follow the heat.'
+            watched
+              ? `${watched.user.displayName} has not guessed yet`
+              : isSpectator
+                ? 'watching along — the board fills as they guess'
+                : 'start broad. music, ocean, money. then follow the heat.'
           }
         />
       </div>
